@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<title>下書き</title>
+<style>
+  :root{
+    --bg:#12121c; --panel:#1c1c2b; --panel2:#242438;
+    --line:#33334d; --text:#e8e8f0; --sub:#9a9ab5;
+    --accent:#7c6cff; --accent2:#5847e0; --danger:#e05a6b;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+    display:flex; flex-direction:column; min-height:100dvh;
+  }
+  header{
+    padding:14px 16px; display:flex; align-items:center; gap:10px;
+    border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5;
+  }
+  header h1{font-size:16px; margin:0; letter-spacing:.05em; flex:1;}
+  header .hint{font-size:11px; color:var(--sub);}
+
+  /* AI選択タブ */
+  .tabs{display:flex; gap:6px; padding:12px 16px 4px; overflow-x:auto;}
+  .tab{
+    flex:0 0 auto; padding:8px 14px; border-radius:999px; border:1px solid var(--line);
+    background:var(--panel); color:var(--sub); font-size:13px; font-weight:600; cursor:pointer;
+    transition:.15s; white-space:nowrap;
+  }
+  .tab.active{background:var(--accent); border-color:var(--accent); color:#fff;}
+
+  main{flex:1; padding:12px 16px 20px; display:flex; flex-direction:column; gap:14px;}
+
+  /* 入力エリア */
+  .editor-wrap{display:flex; flex-direction:column; gap:8px;}
+  textarea{
+    width:100%; min-height:180px; resize:vertical;
+    background:var(--panel); color:var(--text); border:1px solid var(--line);
+    border-radius:var(--radius); padding:14px; font-size:16px; line-height:1.6; font-family:inherit;
+  }
+  textarea:focus{outline:none; border-color:var(--accent);}
+
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap;}
+  .btn{
+    padding:10px 14px; border-radius:12px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--text); font-size:14px; font-weight:600; cursor:pointer;
+    transition:.12s;
+  }
+  .btn:active{transform:scale(.96);}
+  .btn.pair{min-width:52px; font-size:18px; font-weight:700;}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.ghost{background:transparent;}
+  .btn.danger{color:var(--danger); border-color:var(--danger);}
+  .spacer{flex:1;}
+
+  .save-row{display:flex; gap:8px; align-items:center;}
+  .slotcount{font-size:12px; color:var(--sub);}
+
+  /* 保存スロット */
+  .slots{display:flex; flex-direction:column; gap:10px;}
+  .slot{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:12px 14px; display:flex; flex-direction:column; gap:8px;
+  }
+  .slot.empty{color:var(--sub); font-size:13px; align-items:center; padding:18px; border-style:dashed;}
+  .slot .body{font-size:14px; line-height:1.5; white-space:pre-wrap; word-break:break-word; max-height:5.4em; overflow:hidden;}
+  .slot .meta{font-size:11px; color:var(--sub);}
+  .slot .acts{display:flex; gap:8px;}
+  .slot .acts .btn{padding:7px 12px; font-size:13px;}
+
+  /* ダミー目隠しオーバーレイ */
+  #disguise{
+    position:fixed; inset:0; z-index:50; display:none;
+    background:#000 center/cover no-repeat;
+    align-items:flex-end; justify-content:flex-end;
+  }
+  #disguise.on{display:flex;}
+  #disguise .unlock{
+    margin:18px; padding:12px 16px; border-radius:12px; border:none;
+    background:rgba(0,0,0,.35); color:rgba(255,255,255,.85); font-size:13px; backdrop-filter:blur(4px);
+    cursor:pointer;
+  }
+
+  /* トースト */
+  #toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:#000c; color:#fff; padding:10px 18px; border-radius:999px; font-size:13px;
+    opacity:0; pointer-events:none; transition:.25s; z-index:60;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  @media(min-width:720px){
+    main{max-width:760px; margin:0 auto; width:100%;}
+    .tabs{max-width:760px; margin:0 auto; width:100%;}
+  }
+
+  /* 端末による出し分け：スマホ=目隠し非表示 / PC=（）非表示 */
+  body.is-touch #disguiseBtn{display:none;}
+  body.is-pc .btn.pair{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>下書き</h1>
+  <span class="hint" id="modehint"></span>
+  <button class="btn ghost" id="disguiseBtn" title="目隠し">🌄 隠す</button>
+</header>
+
+<div class="tabs" id="tabs"></div>
+
+<main>
+  <div class="editor-wrap">
+    <textarea id="editor" placeholder="ここに下書きを入力…"></textarea>
+    <div class="toolbar">
+      <button class="btn pair" data-ins="（">（</button>
+      <button class="btn pair" data-ins="）">）</button>
+      <button class="btn" id="cutBtn">✂️ 切り取り</button>
+      <button class="btn ghost" id="clearBtn">クリア</button>
+      <span class="spacer"></span>
+    </div>
+    <div class="save-row">
+      <button class="btn primary" id="saveBtn">＋ 保存</button>
+      <span class="slotcount" id="slotcount"></span>
+    </div>
+  </div>
+
+  <div class="slots" id="slots"></div>
+</main>
+
+<div id="disguise">
+  <button class="unlock" id="unlockBtn">解除するにはここをタップ</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const AIS = ["ChatGPT","Gemini","Claude","Grok","KIMI"];
+const MAX = 3;
+const KEY = "draft_app_v1";
+
+let store = load();
+let current = store.current || AIS[0];
+let editingId = null; // 編集中スロットのid
+
+function load(){
+  try{ return JSON.parse(localStorage.getItem(KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function save(){
+  store.current = current;
+  localStorage.setItem(KEY, JSON.stringify(store));
+}
+function slotsOf(ai){ return (store[ai] ||= []); }
+
+/* --- タブ --- */
+const tabsEl = document.getElementById("tabs");
+function renderTabs(){
+  tabsEl.innerHTML = "";
+  AIS.forEach(ai=>{
+    const b = document.createElement("button");
+    b.className = "tab"+(ai===current?" active":"");
+    b.textContent = ai;
+    b.onclick = ()=>{ current=ai; editingId=null; save(); renderTabs(); renderSlots(); };
+    tabsEl.appendChild(b);
+  });
+}
+
+/* --- スロット表示 --- */
+const slotsEl = document.getElementById("slots");
+const slotcountEl = document.getElementById("slotcount");
+function renderSlots(){
+  const list = slotsOf(current);
+  slotcountEl.textContent = `${current}：${list.length} / ${MAX} 件`;
+  slotsEl.innerHTML = "";
+  if(list.length===0){
+    const d = document.createElement("div");
+    d.className = "slot empty";
+    d.textContent = "保存された下書きはまだありません";
+    slotsEl.appendChild(d);
+  }
+  list.forEach(item=>{
+    const el = document.createElement("div");
+    el.className = "slot";
+    const body = document.createElement("div");
+    body.className = "body"; body.textContent = item.text || "（空）";
+    const meta = document.createElement("div");
+    meta.className = "meta"; meta.textContent = new Date(item.ts).toLocaleString("ja-JP");
+    const acts = document.createElement("div");
+    acts.className = "acts";
+    acts.innerHTML = `
+      <button class="btn" data-act="load">読込</button>
+      <button class="btn ghost" data-act="edit">編集</button>
+      <button class="btn ghost" data-act="copy">コピー</button>
+      <button class="btn danger" data-act="del">削除</button>`;
+    acts.querySelector('[data-act=load]').onclick = ()=>{ editor.value=item.text; editingId=null; editor.focus(); toast("読み込みました"); };
+    acts.querySelector('[data-act=edit]').onclick = ()=>{ editor.value=item.text; editingId=item.id; editor.focus(); toast("編集中：保存で上書きします"); updateMode(); };
+    acts.querySelector('[data-act=copy]').onclick = ()=>{ navigator.clipboard.writeText(item.text); toast("コピーしました"); };
+    acts.querySelector('[data-act=del]').onclick = ()=>{
+      store[current] = list.filter(x=>x.id!==item.id);
+      if(editingId===item.id) editingId=null;
+      save(); renderSlots(); updateMode(); toast("削除しました");
+    };
+    el.append(body, meta, acts);
+    slotsEl.appendChild(el);
+  });
+}
+
+/* --- 入力・ボタン --- */
+const editor = document.getElementById("editor");
+
+function insertAtCursor(txt){
+  const s = editor.selectionStart, e = editor.selectionEnd;
+  editor.value = editor.value.slice(0,s) + txt + editor.value.slice(e);
+  editor.selectionStart = editor.selectionEnd = s + txt.length;
+  editor.focus();
+}
+document.querySelectorAll("[data-ins]").forEach(b=>{
+  b.onclick = ()=> insertAtCursor(b.dataset.ins);
+});
+
+document.getElementById("cutBtn").onclick = async ()=>{
+  const s = editor.selectionStart, e = editor.selectionEnd;
+  const sel = editor.value.slice(s,e);
+  const target = sel || editor.value;      // 選択があればそこ、無ければ全文
+  try{ await navigator.clipboard.writeText(target); }catch(_){}
+  if(sel){
+    editor.value = editor.value.slice(0,s) + editor.value.slice(e);
+    editor.selectionStart = editor.selectionEnd = s;
+  }else{
+    editor.value = "";
+  }
+  editor.focus();
+  toast(sel ? "選択部分を切り取りました" : "全文を切り取りました");
+};
+
+document.getElementById("clearBtn").onclick = ()=>{ editor.value=""; editingId=null; updateMode(); editor.focus(); };
+
+/* --- 保存 / 上書き --- */
+const saveBtn = document.getElementById("saveBtn");
+function updateMode(){
+  document.getElementById("modehint").textContent = editingId ? "編集中" : "";
+  saveBtn.textContent = editingId ? "✓ 上書き保存" : "＋ 保存";
+}
+saveBtn.onclick = ()=>{
+  const text = editor.value.trim();
+  if(!text){ toast("入力が空です"); return; }
+  const list = slotsOf(current);
+  if(editingId){
+    const it = list.find(x=>x.id===editingId);
+    if(it){ it.text=text; it.ts=Date.now(); }
+    editingId=null; toast("上書きしました");
+  }else{
+    if(list.length>=MAX){ toast(`${current}は${MAX}件までです`); return; }
+    list.unshift({id:crypto.randomUUID(), text, ts:Date.now()});
+    toast("保存しました");
+  }
+  save(); renderSlots(); updateMode();
+};
+
+/* --- ダミー目隠し --- */
+const disguise = document.getElementById("disguise");
+// 風景写真（グラデーションで生成した軽量な擬似風景・オフライン可）
+disguise.style.background =
+  "linear-gradient(180deg,#8ec5ff 0%,#c9e6ff 38%,#e8f4e0 55%,#bcd99a 70%,#7fae5a 100%)";
+// 上に山と太陽をSVGで重ねる
+disguise.insertAdjacentHTML("afterbegin", `
+  <svg style="position:absolute;inset:0;width:100%;height:100%" preserveAspectRatio="xMidYMid slice" viewBox="0 0 100 100">
+    <circle cx="75" cy="22" r="9" fill="#fff6c9"/>
+    <polygon points="0,70 25,42 45,70" fill="#6b8f9e"/>
+    <polygon points="30,72 55,38 82,72" fill="#547886"/>
+    <polygon points="60,72 82,50 100,72" fill="#6b8f9e"/>
+    <rect y="70" width="100" height="30" fill="#7fae5a"/>
+  </svg>`);
+document.getElementById("disguiseBtn").onclick = ()=> disguise.classList.add("on");
+document.getElementById("unlockBtn").onclick   = ()=> disguise.classList.remove("on");
+
+/* --- トースト --- */
+let toastT;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove("show"), 1600);
+}
+
+/* --- 端末判定（タッチ端末=スマホ扱い / それ以外=PC扱い） --- */
+const isTouch = window.matchMedia("(pointer:coarse)").matches
+  || ("ontouchstart" in window && navigator.maxTouchPoints>0);
+document.body.classList.add(isTouch ? "is-touch" : "is-pc");
+
+/* --- 初期化 --- */
+renderTabs(); renderSlots(); updateMode();
+</script>
+</body>
+</html>
