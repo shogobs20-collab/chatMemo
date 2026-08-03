@@ -19,15 +19,17 @@
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
     display:flex; flex-direction:column; min-height:100dvh;
   }
+  /* ヘッダー＋タブをまとめて上部固定 */
+  .topbar{position:sticky; top:0; z-index:5; background:var(--bg);}
   header{
     padding:14px 16px; display:flex; align-items:center; gap:10px;
-    border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5;
+    border-bottom:1px solid var(--line); background:var(--bg);
   }
   header h1{font-size:16px; margin:0; letter-spacing:.05em; flex:1;}
   header .hint{font-size:11px; color:var(--sub);}
 
-  /* AI選択タブ */
-  .tabs{display:flex; gap:6px; padding:12px 16px 4px; overflow-x:auto;}
+  /* AI選択タブ（縦の見切れ防止のため上下に余白を確保） */
+  .tabs{display:flex; gap:6px; padding:10px 16px; overflow-x:auto; overflow-y:hidden;}
   .tab{
     flex:0 0 auto; padding:8px 14px; border-radius:999px; border:1px solid var(--line);
     background:var(--panel); color:var(--sub); font-size:13px; font-weight:600; cursor:pointer;
@@ -55,6 +57,7 @@
   .btn:active{transform:scale(.96);}
   .btn.pair{min-width:52px; font-size:18px; font-weight:700;}
   .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.primary.full{background:var(--panel2); border-color:var(--line); color:var(--sub);}
   .btn.ghost{background:transparent;}
   .btn.danger{color:var(--danger); border-color:var(--danger);}
   .spacer{flex:1;}
@@ -107,13 +110,14 @@
 </head>
 <body>
 
-<header>
-  <h1>下書き</h1>
-  <span class="hint" id="modehint"></span>
-  <button class="btn ghost" id="disguiseBtn" title="目隠し">🌄 隠す</button>
-</header>
-
-<div class="tabs" id="tabs"></div>
+<div class="topbar">
+  <header>
+    <h1>下書き</h1>
+    <span class="hint" id="modehint"></span>
+    <button class="btn ghost" id="disguiseBtn" title="目隠し">🌄 隠す</button>
+  </header>
+  <div class="tabs" id="tabs"></div>
+</div>
 
 <main>
   <div class="editor-wrap">
@@ -167,7 +171,7 @@ function renderTabs(){
     const b = document.createElement("button");
     b.className = "tab"+(ai===current?" active":"");
     b.textContent = ai;
-    b.onclick = ()=>{ current=ai; editingId=null; save(); renderTabs(); renderSlots(); };
+    b.onclick = ()=>{ current=ai; editingId=null; save(); renderTabs(); renderSlots(); updateMode(); };
     tabsEl.appendChild(b);
   });
 }
@@ -247,17 +251,23 @@ const saveBtn = document.getElementById("saveBtn");
 function updateMode(){
   document.getElementById("modehint").textContent = editingId ? "編集中" : "";
   saveBtn.textContent = editingId ? "✓ 上書き保存" : "＋ 保存";
+  // 編集中でなく、かつ満杯なら色を落とす
+  const full = !editingId && slotsOf(current).length >= MAX;
+  saveBtn.classList.toggle("full", full);
 }
 saveBtn.onclick = ()=>{
   const text = editor.value.trim();
-  if(!text){ toast("入力が空です"); return; }
   const list = slotsOf(current);
   if(editingId){
+    // 編集（上書き）は満杯でも可。空だけ弾く
+    if(!text){ toast("入力が空です"); return; }
     const it = list.find(x=>x.id===editingId);
     if(it){ it.text=text; it.ts=Date.now(); }
     editingId=null; toast("上書きしました");
   }else{
+    // 新規は満杯を優先案内 → 次に空チェック
     if(list.length>=MAX){ toast(`${current}は${MAX}件までです`); return; }
+    if(!text){ toast("入力が空です"); return; }
     list.unshift({id:crypto.randomUUID(), text, ts:Date.now()});
     toast("保存しました");
   }
